@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Firebase Realtime</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .glass { background: rgba(255,255,255,0.75); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.3); }
+        .btn-room { background: rgba(255,255,255,0.8); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.4); transition: all 0.4s ease; }
+        .btn-room:hover { transform: translateY(-10px) scale(1.02); box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
+        .page { display: none; }
+        .page.active { display: block; }
+
+        @keyframes rotateCrown {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .crown-rotate {
+            display: inline-block;
+            animation: rotateCrown 20s linear infinite;
+            font-size: 8rem;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 100px;
+            height: 50px;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 50px;
+            box-shadow: inset 0 4px 10px rgba(0,0,0,0.2);
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 42px;
+            width: 42px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+        input:checked + .slider { background-color: #ef4444; }
+        input:checked + .slider:before { transform: translateX(50px); }
+        .slider-text {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            font-weight: bold;
+            color: white;
+            font-size: 14px;
+            pointer-events: none;
+            transition: opacity 0.4s;
+        }
+        .off-text { left: 12px; opacity: 1; }
+        .on-text { right: 12px; opacity: 0; }
+        input:checked + .slider .off-text { opacity: 0; }
+        input:checked + .slider .on-text { opacity: 1; }
+
+        .toast-top-center {
+            position: fixed;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%) scale(0.9);
+            opacity: 0;
+            min-width: 280px;
+            max-width: 380px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(16px);
+            border-radius: 16px;
+            padding: 16px 24px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            z-index: 9999;
+            transition: all 0.4s ease;
+        }
+        .toast-top-center.show {
+            transform: translateX(-50%) scale(1);
+            opacity: 1;
+        }
+        .toast-top-center-icon { font-size: 2.2rem; }
+        .toast-top-center-message { font-size: 1.1rem; font-weight: 600; color: #1f2937; }
+        .toast-top-center.success .toast-top-center-icon { color: #10b981; }
+        .toast-top-center.error .toast-top-center-icon { color: #ef4444; }
+        .toast-top-center.info .toast-top-center-icon { color: #3b82f6; }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-indigo-50 via-blue-50 to-purple-50">
+
+    <!-- Login Admin -->
+    <div id="login-page" class="min-h-screen flex items-center justify-center px-4">
+        <div class="glass rounded-3xl shadow-2xl p-10 max-w-md w-full text-center">
+            <div class="w-20 h-20 bg-gradient-to-r from-indigo-600 to-blue-600 rounded-3xl mx-auto flex items-center justify-center text-white text-3xl font-bold shadow-xl mb-6">AD</div>
+            <h1 class="text-3xl font-bold text-gray-800 mb-4">Admin Dashboard</h1>
+            <input type="password" id="admin-password" class="w-full px-5 py-4 bg-white/70 border border-gray-300 rounded-2xl mb-6" placeholder="Password admin">
+            <button onclick="handleLogin()" class="w-full py-4 bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-bold rounded-2xl shadow-lg hover:shadow-xl transform hover:scale-105 transition">
+                Masuk sebagai Admin
+            </button>
+            <p class="mt-6 text-xs text-gray-500">Password: adminrahasia2026</p>
+        </div>
+    </div>
+
+    <!-- Dashboard Container -->
+    <div id="dashboard-container" class="hidden min-h-screen">
+
+        <!-- Menu Utama Admin -->
+        <div id="menu-page" class="page active">
+            <header class="glass border-b border-gray-200 shadow-lg">
+                <div class="max-w-4xl mx-auto px-6 py-6 flex items-center justify-between">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-12 h-12 bg-gradient-to-r from-indigo-600 to-blue-600 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg">AD</div>
+                        <h1 class="text-2xl font-bold text-gray-800">Admin Panel</h1>
+                    </div>
+                    <button onclick="logout()" class="px-6 py-3 bg-red-600 text-white rounded-2xl hover:bg-red-700 transition font-medium shadow-md">
+                        Logout
+                    </button>
+                </div>
+            </header>
+
+            <main class="max-w-4xl mx-auto px-6 py-12">
+                <h2 class="text-3xl font-bold text-center text-gray-800 mb-12">Pilih Ruangan Admin</h2>
+                <div class="space-y-8">
+                    <button onclick="showPage('manajemen')" class="btn-room w-full rounded-3xl p-8 shadow-xl flex items-center justify-between">
+                        <div class="flex items-center space-x-6">
+                            <div class="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center">
+                                <svg class="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H9a4 4 0 01-4-4v-1a4 4 0 014-4h6a4 4 0 014 4v1a4 4 0 01-4 4z"/></svg>
+                            </div>
+                            <div class="text-left">
+                                <h3 class="text-2xl font-bold text-gray-800">Manajemen User</h3>
+                                <p class="text-gray-600">Key, expired & driver max</p>
+                            </div>
+                        </div>
+                        <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    </button>
+
+                    <button onclick="showPage('pengaturan')" class="btn-room w-full rounded-3xl p-8 shadow-xl flex items-center justify-between">
+                        <div class="flex items-center space-x-6">
+                            <div class="w-16 h-16 bg-purple-100 rounded-2xl flex items-center justify-center">
+                                <svg class="w-10 h-10 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            </div>
+                            <div class="text-left">
+                                <h3 class="text-2xl font-bold text-gray-800">Pengaturan</h3>
+                                <p class="text-gray-600">Update sistem & pesan user</p>
+                            </div>
+                        </div>
+                        <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                </div>
+            </main>
+        </div>
+
+        <!-- Halaman Manajemen User -->
+        <div id="manajemen" class="page min-h-screen">
+            <header class="glass border-b border-gray-200 shadow-lg">
+                <div class="max-w-4xl mx-auto px-6 py-6 flex items-center justify-between">
+                    <button onclick="showPage('menu-page')" class="flex items-center space-x-3 text-gray-700 font-medium">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                        <span>Kembali</span>
+                    </button>
+                    <h1 class="text-2xl font-bold text-gray-800">Manajemen User</h1>
+                    <div class="w-12"></div>
+                </div>
+            </header>
+            <main class="max-w-4xl mx-auto px-6 py-12">
+                <div class="glass rounded-3xl p-10 shadow-xl space-y-10">
+                    <div class="text-center mb-8">
+                        <div class="crown-rotate">👑</div>
+                        <p class="text-2xl text-gray-700 mt-4">Total Pengguna Terdaftar</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
+                        <button onclick="generateNewKeyRealtime()" class="py-6 bg-indigo-600 text-white font-bold text-xl rounded-2xl shadow-lg hover:shadow-xl transform hover:scale-105 transition">
+                            Generate Key Baru
+                        </button>
+
+                        <div class="text-center">
+                            <p class="text-lg font-medium text-gray-700 mb-4">Status Key User</p>
+                            <label class="switch">
+                                <input type="checkbox" id="expired-toggle" onchange="toggleKeyExpired(this.checked)">
+                                <span class="slider">
+                                    <span class="slider-text off-text">AKTIF</span>
+                                    <span class="slider-text on-text">EXPIRED</span>
+                                </span>
+                            </label>
+                            <p class="text-sm text-gray-500 mt-4">ON = Key Expired (user tidak bisa login)</p>
+                        </div>
+                    </div>
+
+                    <!-- Atur Driver Max - Tombol Update di tengah -->
+<div class="p-8 bg-gradient-to-r from-teal-50 to-cyan-50 rounded-3xl text-center">
+    <h3 class="text-2xl font-bold text-gray-800 mb-6">Atur Driver Max (Pesanan Aktif)</h3>
+    <p class="text-lg text-gray-600 mb-8">
+        Angka saat ini: <span id="current-driver-max" class="font-bold text-purple-600">loading...</span>
+    </p>
+    
+    <div class="max-w-md mx-auto">
+        <div class="flex flex-col items-center gap-6">
+            <input type="number" id="driver-max-input" class="w-full max-w-xs px-6 py-4 bg-white border border-gray-300 rounded-2xl text-center text-2xl font-bold" placeholder="0" min="0">
+            
+            <button onclick="updateDriverMax()" class="w-full max-w-xs py-5 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-xl rounded-2xl shadow-lg hover:shadow-xl transform hover:scale-105 transition">
+                Update Driver Max
+            </button>
+        </div>
+    </div>
+    
+    <p class="text-sm text-gray-500 mt-8">
+        Angka ini akan langsung muncul di halaman Pesanan semua user (realtime)
+    </p>
+</div>
+
+                    <div class="p-8 bg-gradient-to-r from-purple-50 to-pink-50 rounded-3xl">
+                        <h3 class="text-2xl font-bold text-gray-800 mb-6 text-center">Kirim Notifikasi Baru</h3>
+                        <input type="text" id="notif-title" class="w-full px-5 py-4 mb-4 bg-white border border-gray-300 rounded-2xl" placeholder="Judul Notifikasi" value="Update Terbaru!">
+                        <textarea id="notif-message" class="w-full px-5 py-4 mb-4 bg-white border border-gray-300 rounded-2xl h-32 resize-none" placeholder="Pesan notifikasi...">Ada pembaruan key atau website baru.</textarea>
+                        <button onclick="sendNotificationRealtime()" class="w-full py-5 bg-gradient-to-r from-green-500 to-teal-600 text-white font-bold text-xl rounded-2xl shadow-lg hover:shadow-xl transform hover:scale-105 transition">
+                            Kirim Notifikasi Realtime
+                        </button>
+                    </div>
+
+                    <!-- Ganti bagian Riwayat Notifikasi di halaman Manajemen User -->
+<div>
+    <h3 class="text-2xl font-bold text-gray-800 mb-6 text-center">Riwayat Notifikasi</h3>
+    <div id="notification-history" class="space-y-4">
+        <p class="text-center text-gray-500">Loading...</p>
+    </div>
+</div>
+
+                    <p id="current-key" class="text-center text-2xl font-mono font-bold text-indigo-700 mt-8">Key saat ini: loading...</p>
+                </div>
+            </main>
+        </div>
+
+        <!-- Halaman Pengaturan -->
+        <div id="pengaturan" class="page min-h-screen">
+            <header class="glass border-b border-gray-200 shadow-lg">
+                <div class="max-w-4xl mx-auto px-6 py-6 flex items-center justify-between">
+                    <button onclick="showPage('menu-page')" class="flex items-center space-x-3 text-gray-700 font-medium">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                        <span>Kembali</span>
+                    </button>
+                    <h1 class="text-2xl font-bold text-gray-800">Pengaturan</h1>
+                    <div class="w-12"></div>
+                </div>
+            </header>
+            <main class="max-w-4xl mx-auto px-6 py-12">
+                <div class="glass rounded-3xl p-12 shadow-xl space-y-12">
+                    <div class="text-center">
+                        <h3 class="text-3xl font-bold text-gray-800 mb-6">Mode Update Sistem</h3>
+                        <p class="text-lg text-gray-600 mb-8">
+                            ON = User tidak bisa login (layar kunci full screen muncul)<br>
+                            OFF = Sistem normal, user bisa login
+                        </p>
+
+                        <label class="switch">
+                            <input type="checkbox" id="update-mode-toggle" onchange="toggleUpdateMode(this.checked)">
+                            <span class="slider">
+                                <span class="slider-text off-text">NORMAL</span>
+                                <span class="slider-text on-text">UPDATE</span>
+                            </span>
+                        </label>
+
+                        <p class="text-2xl font-bold mt-8" id="update-mode-status">
+                            Status: <span class="text-gray-600">Loading...</span>
+                        </p>
+                    </div>
+
+                    <hr class="border-gray-300">
+
+                    <div class="text-center">
+                        <h3 class="text-3xl font-bold text-gray-800 mb-6">Kirim Pesan ke Semua User</h3>
+                        <p class="text-lg text-gray-600 mb-8">
+                            Pesan ini akan muncul sebagai popup besar di dashboard semua user
+                        </p>
+
+                        <div class="max-w-2xl mx-auto space-y-6">
+                            <input type="text" id="global-title" class="w-full px-6 py-4 bg-white border border-gray-300 rounded-2xl text-xl" placeholder="Judul Pesan" value="Pengumuman Penting">
+                            <textarea id="global-message" class="w-full px-6 py-4 bg-white border border-gray-300 rounded-2xl h-40 resize-none text-lg" placeholder="Isi pesan untuk semua user...">Halo para user! Ada update terbaru dari admin. Terima kasih atas kesetiaan Anda.</textarea>
+                            
+                            <div class="flex gap-6 justify-center">
+                                <button onclick="sendGlobalMessage()" class="flex-1 py-5 bg-gradient-to-r from-orange-500 to-pink-600 text-white font-bold text-xl rounded-2xl shadow-lg hover:shadow-xl transform hover:scale-105 transition">
+                                    Kirim Pesan ke Semua User
+                                </button>
+                                
+                                <button onclick="deleteGlobalMessage()" class="px-10 py-5 bg-red-600 text-white font-bold text-xl rounded-2xl shadow-lg hover:shadow-xl transform hover:scale-105 transition">
+                                    Hapus Pesan
+                                </button>
+                            </div>
+                        </div>
+
+                        <p class="text-sm text-gray-500 mt-6">
+                            Pesan aktif akan muncul saat user membuka dashboard. Tombol "Hapus Pesan" akan menghilangkan popup dari semua user.
+                        </p>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyC0PmEdkLLOiK51v1EqakuVQFc95AL5LMk",
+            authDomain: "fanzz-tzz.firebaseapp.com",
+            databaseURL: "https://fanzz-tzz-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "fanzz-tzz",
+            storageBucket: "fanzz-tzz.firebasestorage.app",
+            messagingSenderId: "623714665294",
+            appId: "1:623714665294:web:b572cf88dcb495932f141f",
+            measurementId: "G-Q2Z2DW78V8"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        function showToast(message, type = 'error') {
+            const oldToast = document.querySelector('.toast-top-center');
+            if (oldToast) oldToast.remove();
+
+            const toast = document.createElement('div');
+            toast.className = `toast-top-center ${type}`;
+
+            let icon = '❌';
+            if (type === 'success') icon = '✅';
+            if (type === 'info') icon = 'ℹ️';
+
+            toast.innerHTML = `
+                <div class="toast-top-center-icon">${icon}</div>
+                <div class="toast-top-center-message">${message}</div>
+            `;
+
+            document.body.appendChild(toast);
+
+            setTimeout(() => toast.classList.add('show'), 100);
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 600);
+            }, 4000);
+        }
+
+        function handleLogin() {
+            const password = document.getElementById('admin-password').value.trim();
+            if (password === 'adminrahasia2026') {
+                document.getElementById('login-page').classList.add('hidden');
+                document.getElementById('dashboard-container').classList.remove('hidden');
+                showPage('menu-page');
+                showToast('Login berhasil! Selamat datang Admin 👋', 'success');
+            } else {
+                showToast('Password salah! Coba lagi.', 'error');
+            }
+        }
+
+        function logout() {
+            document.getElementById('login-page').classList.remove('hidden');
+            document.getElementById('dashboard-container').classList.add('hidden');
+            showToast('Logout berhasil.', 'info');
+        }
+
+        function showPage(id) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            const page = document.getElementById(id);
+            if (page) page.classList.add('active');
+            if (id === 'manajemen') {
+                loadRealtimeKey();
+                loadKeyExpiredStatus();
+                loadNotificationHistory();
+                loadDriverMax();
+            }
+            if (id === 'pengaturan') {
+                loadUpdateModeStatus();
+            }
+        }
+
+        function loadRealtimeKey() {
+            db.collection("config").doc("userKey").onSnapshot(doc => {
+                if (doc.exists) {
+                    const data = doc.data();
+                    document.getElementById('current-key').textContent = `Key saat ini: ${data.key} ${data.expired ? '(Expired)' : ''}`;
+                }
+            });
+        }
+
+        function loadKeyExpiredStatus() {
+            const toggle = document.getElementById('expired-toggle');
+            db.collection("config").doc("userKey").onSnapshot(doc => {
+                if (doc.exists) {
+                    toggle.checked = doc.data().expired === true;
+                }
+            });
+        }
+
+        function toggleKeyExpired(isExpired) {
+            const action = isExpired ? 'expired' : 'diaktifkan kembali';
+            if (confirm(`Yakin ${action} key?`)) {
+                db.collection("config").doc("userKey").update({ expired: isExpired })
+                    .then(() => showToast(`Key berhasil ${action}!`, 'success'));
+            } else {
+                document.getElementById('expired-toggle').checked = !isExpired;
+            }
+        }
+
+        function generateNewKeyRealtime() {
+            const newKey = Math.random().toString(36).substring(2, 14);
+            db.collection("config").doc("userKey").set({
+                key: newKey,
+                expired: false
+            }).then(() => showToast('Key baru berhasil dibuat!', 'success'));
+        }
+
+        function sendNotificationRealtime() {
+            const title = document.getElementById('notif-title').value.trim() || "Update";
+            const message = document.getElementById('notif-message').value.trim() || "Ada update baru.";
+            db.collection("notifications").add({
+                title: title,
+                message: message,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            }).then(() => {
+                showToast('Notifikasi berhasil dikirim realtime!', 'success');
+                document.getElementById('notif-title').value = '';
+                document.getElementById('notif-message').value = '';
+            });
+        }
+
+        function loadNotificationHistory() {
+    const container = document.getElementById('notification-history');
+    db.collection("notifications").orderBy("timestamp", "desc").onSnapshot(snapshot => {
+        container.innerHTML = '';
+        if (snapshot.empty) {
+            container.innerHTML = '<p class="text-center text-gray-500">Belum ada notifikasi.</p>';
+            return;
+        }
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            const time = data.timestamp ? new Date(data.timestamp.toDate()).toLocaleString('id-ID') : 'Baru saja';
+            const item = document.createElement('div');
+            item.className = 'p-4 bg-white/70 rounded-2xl shadow flex justify-between items-start gap-4';
+            item.innerHTML = `
+                <div class="flex-1">
+                    <p class="font-bold text-lg">${data.title}</p>
+                    <p class="text-gray-700">${data.message}</p>
+                    <p class="text-sm text-gray-500 mt-2">${time}</p>
+                </div>
+                <button onclick="deleteNotification('${doc.id}')" class="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-xl hover:bg-red-700 transition shadow">
+                    Hapus
+                </button>
+            `;
+            container.appendChild(item);
+        });
+    });
+}
+
+// Fungsi baru: Hapus notifikasi tertentu
+function deleteNotification(docId) {
+    if (confirm('Yakin ingin menghapus notifikasi ini? Riwayat akan hilang permanen.')) {
+        db.collection("notifications").doc(docId).delete()
+            .then(() => showToast('Notifikasi berhasil dihapus!', 'success'))
+            .catch(err => {
+                console.error(err);
+                showToast('Gagal menghapus notifikasi.', 'error');
+            });
+    }
+}
+
+        function loadUpdateModeStatus() {
+            db.collection("config").doc("settings").onSnapshot(doc => {
+                if (doc.exists) {
+                    const data = doc.data();
+                    const toggle = document.getElementById('update-mode-toggle');
+                    toggle.checked = data.updateMode === true;
+                    document.getElementById('update-mode-status').innerHTML = `Status: <span class="\( {data.updateMode ? 'text-red-600' : 'text-green-600'}"> \){data.updateMode ? 'UPDATE (User diblokir)' : 'NORMAL'}</span>`;
+                }
+            });
+        }
+
+        function toggleUpdateMode(isActive) {
+            const status = isActive ? 'diaktifkan' : 'dinonaktifkan';
+            if (confirm(`Yakin mode update ${status}?`)) {
+                db.collection("config").doc("settings").set({
+                    updateMode: isActive
+                }, { merge: true }).then(() => {
+                    showToast(isActive ? 'Mode update aktif! User melihat layar kunci 🔒' : 'Mode update nonaktif. Sistem normal kembali.', 'success');
+                });
+            } else {
+                document.getElementById('update-mode-toggle').checked = !isActive;
+            }
+        }
+
+        function sendGlobalMessage() {
+            const title = document.getElementById('global-title').value.trim() || "Pengumuman";
+            const message = document.getElementById('global-message').value.trim() || "Pesan dari admin.";
+
+            if (!title || !message) {
+                showToast('Judul dan pesan tidak boleh kosong!', 'error');
+                return;
+            }
+
+            db.collection("config").doc("globalMessage").set({
+                title: title,
+                message: message,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                active: true
+            }).then(() => {
+                showToast('Pesan berhasil dikirim ke semua user!', 'success');
+                document.getElementById('global-title').value = '';
+                document.getElementById('global-message').value = '';
+            });
+        }
+
+        function deleteGlobalMessage() {
+            if (confirm('Yakin ingin menghapus pesan global? Popup akan hilang dari semua user.')) {
+                db.collection("config").doc("globalMessage").delete()
+                    .then(() => showToast('Pesan global berhasil dihapus!', 'success'))
+                    .catch(() => showToast('Gagal menghapus pesan.', 'error'));
+            }
+        }
+
+        // Driver Max
+        function loadDriverMax() {
+            db.collection("config").doc("driver").onSnapshot(doc => {
+                if (doc.exists) {
+                    const data = doc.data();
+                    document.getElementById('current-driver-max').textContent = data.max || 0;
+                    document.getElementById('driver-max-input').value = data.max || 0;
+                } else {
+                    document.getElementById('current-driver-max').textContent = '0';
+                }
+            });
+        }
+
+        function updateDriverMax() {
+            const value = parseInt(document.getElementById('driver-max-input').value);
+            if (isNaN(value) || value < 0) {
+                showToast('Masukkan angka valid!', 'error');
+                return;
+            }
+
+            db.collection("config").doc("driver").set({ max: value })
+                .then(() => showToast(`Driver max berhasil diupdate menjadi ${value}!`, 'success'));
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {});
+    </script>
+</body>
+</html>
